@@ -1,0 +1,51 @@
+/* ========================================== */
+/* CSS KUSTOM AIOps - GRAFANA STYLE           */
+/* ========================================== */
+:root {
+    --bs-body-bg: #181b1f;
+    --bs-body-color: #cdd9e5;
+}
+body { font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+
+/* Panel Style */
+.card { 
+    background-color: #22252b; 
+    border: 1px solid #2d3139; 
+    border-radius: 4px; 
+    box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+.card-header { 
+    background-color: transparent; 
+    border-bottom: 1px solid #2d3139; 
+}
+
+/* Progress Bar lebih tipis dan tegas */
+.progress { 
+    background-color: #111217; 
+    border: 1px solid #2d3139; 
+    border-radius: 2px;
+    height: 16px;
+}
+
+/* Custom Table */
+.table { --bs-table-bg: transparent; --bs-table-color: #cdd9e5; border-color: #2d3139; }
+.table-hover tbody tr:hover { background-color: #2a2e37; }
+
+/* Typography Highlights */
+.text-neon-blue { color: #32a8ff !important; }
+.text-neon-green { color: #57bd65 !important; }
+.text-neon-yellow { color: #f2cc0c !important; }
+.text-neon-red { color: #e02f44 !important; }
+
+/* Form & Input */
+.form-control, .form-select { 
+    background-color: #111217; 
+    border-color: #2d3139; 
+    color: #cdd9e5;
+}
+.form-control:focus, .form-select:focus {
+    background-color: #111217;
+    border-color: #32a8ff;
+    color: white;
+    box-shadow: 0 0 0 0.25rem rgba(50, 168, 255, 0.25);
+}

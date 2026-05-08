@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIOps Grafana-Style Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <!-- Header Dashboard -->
+    <div class="container text-center py-4 mb-3">
+        <h2 class="fw-bold"><i class="bi bi-activity text-primary"></i> AIOps Dashboard</h2>
+        <p class="text-muted fst-italic">{{ pesan }}</p>
+    </div>
+
+    <div class="container">
+        <div class="row">
+            
+            <!-- KOLOM KIRI: Form Tambah & List Target -->
+            <div class="col-lg-4 mb-4">
+                <div class="card shadow-sm mb-4 border-0">
+                    <div class="card-body">
+                        <h6 class="fw-bold mb-3"><i class="bi bi-plus-circle text-primary me-2"></i>Tambah Target Baru</h6>
+                        <form action="/tambah" method="POST">
+                            <div class="mb-2">
+                                <input type="text" name="nama" class="form-control bg-light" placeholder="Nama Aplikasi (Misal: Skripsiku)" required>
+                            </div>
+                            <div class="input-group">
+                                <input type="url" name="url" class="form-control bg-light" placeholder="https://..." required>
+                                <button type="submit" class="btn btn-primary"><i class="bi bi-send-fill"></i></button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm border-0">
+                    <div class="card-header bg-white border-bottom-0 pt-3 pb-0 d-flex justify-content-between align-items-center">
+                        <h6 class="fw-bold mb-0"><i class="bi bi-server text-secondary me-2"></i>Daftar Web Terdaftar</h6>
+                        <span class="badge bg-light text-dark border">{{ targets|length }} Target</span>
+                    </div>
+                    <div class="card-body pt-2">
+                        <ul class="list-group list-group-flush">
+                            {% for target in targets %}
+                            <!-- Jika is_active = 0 (OFF), warnanya kita pudarkan -->
+                            <li class="list-group-item px-0 d-flex justify-content-between align-items-center {% if target.is_active == 0 %}bg-light opacity-50{% endif %}">
+                                <div>
+                                    <span class="fw-bold text-dark d-block" style="font-size: 0.95rem;">
+                                        <!-- Tambah icon pause kalau lagi OFF -->
+                                        {% if target.is_active == 0 %}<i class="bi bi-pause-circle text-warning me-1" title="Monitoring Dijeda"></i>{% endif %}
+                                        {{ target.nama }}
+                                    </span>
+                                    <a href="{{ target.url }}" target="_blank" class="text-muted text-decoration-none" style="font-size: 0.75rem;"><i class="bi bi-link-45deg"></i> {{ target.url }}</a>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <!-- Tombol Toggle ON/OFF -->
+                                    <a href="/toggle/{{ target.id }}" class="btn btn-sm {% if target.is_active != 0 %}btn-success{% else %}btn-secondary{% endif %} border-0" title="Toggle Monitoring">
+                                        <i class="bi {% if target.is_active != 0 %}bi-toggle-on{% else %}bi-toggle-off{% endif %}"></i>
+                                    </a>
+                                    <!-- Tombol Hapus -->
+                                    <a href="/hapus/{{ target.id }}" class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash3-fill"></i></a>
+                                </div>
+                            </li>
+                            {% else %}
+                            <p class="text-muted text-center py-3" style="font-size: 0.85rem;">Belum ada target yang diawasi.</p>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- KOLOM KANAN: Panel Agen Internal & Tabel Log -->
+            <div class="col-lg-8">
+                
+                <!-- FITUR BARU: PANEL AGEN INTERNAL -->
+                <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center rounded-top py-3">
+                    <div class="d-flex align-items-center gap-3">
+                        <h6 class="mb-0 fw-bold"><i class="bi bi-cpu me-2"></i>Internal Agent</h6>
+                            <select id="agent-selector" class="form-select form-select-sm bg-dark text-white border-secondary" style="width: auto; cursor: pointer;">
+                             {% for target in targets %}
+                                <option value="{{ target.url }}">{{ target.nama }}</option>
+                             {% else %}
+                            <option value="">Belum ada target</option>
+                                {% endfor %}
+                            </select>
+                    </div>
+                    <span id="agent-status-badge" class="badge bg-secondary">Menghubungkan...</span>
+                </div> 
+                    <div class="card-body">
+                        <div class="row text-center mb-4 mt-2">
+                            <div class="col-md-6 border-end">
+                                <h6 class="text-muted fw-bold text-uppercase mb-1" style="font-size: 0.75rem;">Total Trafik Masuk</h6>
+                                <h3 id="agent-trafik" class="fw-bold text-primary mb-0">0 <span style="font-size: 0.9rem;" class="text-muted fw-normal">Requests</span></h3>
+                            </div>
+                            <div class="col-md-6">
+                                <h6 class="text-muted fw-bold text-uppercase mb-1" style="font-size: 0.75rem;">Uptime (Server Menyala)</h6>
+                                <h3 id="agent-uptime" class="fw-bold text-info mb-0">0s</h3>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-4 px-2">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="fw-bold text-secondary" style="font-size: 0.85rem;">CPU Usage</span>
+                                <span id="agent-cpu-text" class="fw-bold text-dark" style="font-size: 0.85rem;">0%</span>
+                            </div>
+                            <div class="progress" style="height: 20px; border-radius: 8px;">
+                                <div id="agent-cpu-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" role="progressbar" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-2 px-2">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span class="fw-bold text-secondary" style="font-size: 0.85rem;">RAM Usage (<span id="agent-ram-mb" class="text-primary">0</span> MB Terpakai)</span>
+                                <span id="agent-ram-text" class="fw-bold text-dark" style="font-size: 0.85rem;">0%</span>
+                            </div>
+                            <div class="progress" style="height: 20px; border-radius: 8px;">
+                                <div id="agent-ram-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-warning" role="progressbar" style="width: 0%;"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PANEL TABEL PING LUAR -->
+                <div class="card shadow-sm border-0 mb-5">
+                    <div class="card-header bg-white border-bottom-0 pt-3 pb-2 d-flex justify-content-between align-items-center">
+                        <h6 class="fw-bold mb-0"><i class="bi bi-broadcast text-success me-2"></i>Live Monitoring (Eksternal Ping)</h6>
+                        <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 rounded-pill px-3">Sistem Aktif <i class="bi bi-record-circle ms-1"></i></span>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light text-muted" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                                <tr>
+                                    <th class="ps-4 py-3">NAMA TARGET</th>
+                                    <th class="py-3">STATUS & ANALISA</th>
+                                    <th class="py-3">RESPONSE</th>
+                                    <th class="pe-4 py-3">CEK TERAKHIR</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tabel-log-body">
+                                <tr><td colspan="4" class="text-center py-5 text-muted"><i class="bi bi-arrow-clockwise fa-spin me-2"></i>Memuat data real-time...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Popup untuk Grafik Response Time -->
+    <div class="modal fade" id="chartModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header border-bottom-0 pb-0">
+                    <h5 class="modal-title fw-bold" id="modalChartTitle">Performa Real-time</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <canvas id="responseChart" height="120"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+       // ==========================================
+        // 1. SCRIPT AGEN MATA-MATA (MULTI-SERVER)
+        // ==========================================
+        function tarikDataAgen() {
+            let selectElem = document.getElementById('agent-selector');
+            if(!selectElem || selectElem.value === "") return;
+            
+            // Ambil URL dasar dari dropdown
+            let baseUrl = selectElem.value;
+            // Bersihkan garis miring di akhir url kalau ada (biar gak double //)
+            if(baseUrl.endsWith('/')) {
+                baseUrl = baseUrl.slice(0, -1);
+            }
+            
+            // Rakit URL API lengkapnya
+            let fetchUrl = baseUrl + '/api/agen-status?kunci=RAHASIA_SKRIPSIKUU_99';
+
+            fetch(fetchUrl)
+                .then(res => {
+                    if(!res.ok) throw new Error("Akses ditolak atau agen mati");
+                    return res.json();
+                })
+                .then(data => {
+                    document.getElementById('agent-status-badge').className = 'badge bg-success bg-opacity-10 text-success border border-success border-opacity-25';
+                    document.getElementById('agent-status-badge').innerHTML = '<i class="bi bi-broadcast me-1"></i> Agen Terhubung';
+
+                    document.getElementById('agent-trafik').innerHTML = data.total_trafik + ' <span style="font-size: 0.9rem;" class="text-muted fw-normal">Requests</span>';
+                    
+                    let d = Number(data.uptime_detik);
+                    let h = Math.floor(d / 3600);
+                    let m = Math.floor(d % 3600 / 60);
+                    let s = Math.floor(d % 3600 % 60);
+                    document.getElementById('agent-uptime').innerText = `${h > 0 ? h + 'j ' : ''}${m > 0 ? m + 'm ' : ''}${s}d`;
+
+                    let cpu = data.cpu_persen;
+                    let cpuBar = document.getElementById('agent-cpu-bar');
+                    cpuBar.style.width = cpu + '%';
+                    document.getElementById('agent-cpu-text').innerText = cpu + '%';
+                    if(cpu > 80) cpuBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-danger';
+                    else if(cpu > 50) cpuBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-warning';
+                    else cpuBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-success';
+
+                    let ram = data.ram_persen;
+                    let ramBar = document.getElementById('agent-ram-bar');
+                    ramBar.style.width = ram + '%';
+                    document.getElementById('agent-ram-text').innerText = ram + '%';
+                    document.getElementById('agent-ram-mb').innerText = data.ram_terpakai_mb;
+                    if(ram > 85) ramBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-danger';
+                    else ramBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-warning';
+                })
+                .catch(err => {
+                    // Kalau server yang dipilih belum di-install Agen Python-nya, reset tampilan!
+                    document.getElementById('agent-status-badge').className = 'badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25';
+                    document.getElementById('agent-status-badge').innerHTML = '<i class="bi bi-x-circle me-1"></i> Agen Tidak Ditemukan';
+                    
+                    document.getElementById('agent-trafik').innerHTML = '-';
+                    document.getElementById('agent-uptime').innerText = '-';
+                    document.getElementById('agent-cpu-bar').style.width = '0%';
+                    document.getElementById('agent-cpu-text').innerText = '0%';
+                    document.getElementById('agent-ram-bar').style.width = '0%';
+                    document.getElementById('agent-ram-text').innerText = '0%';
+                    document.getElementById('agent-ram-mb').innerText = '0';
+                });
+        }
+        
+        // Panggil fungsi saat pertama buka dan saat dropdown diganti
+        document.getElementById('agent-selector').addEventListener('change', tarikDataAgen);
+        
+        tarikDataAgen();
+        setInterval(tarikDataAgen, 3000);
+
+        // ==========================================
+        // 2. SCRIPT GRAFIK REAL-TIME PING LOKAL
+        // ==========================================
+        let chartInstance = null;
+        let idWebAktif = null; 
+        let intervalGrafik = null;
+
+        function bukaChart(idWeb, namaWeb) {
+            idWebAktif = idWeb; 
+            document.getElementById('modalChartTitle').innerText = 'Performa Real-time: ' + namaWeb;
+            
+            fetch(`/api/chart/${idWeb}`)
+                .then(res => res.json())
+                .then(data => {
+                    const labels = data.map(log => log.waktu_cek.split(' ')[1]); 
+                    const speeds = data.map(log => log.waktu_respon);
+
+                    const ctx = document.getElementById('responseChart').getContext('2d');
+                    if (chartInstance) chartInstance.destroy();
+
+                    chartInstance = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Response Time (ms)',
+                                data: speeds,
+                                borderColor: '#0d6efd',
+                                backgroundColor: 'rgba(13, 110, 253, 0.1)',
+                                borderWidth: 3,
+                                tension: 0.4, 
+                                fill: true,
+                                pointBackgroundColor: '#fff',
+                                pointBorderColor: '#0d6efd',
+                                pointRadius: 4
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: { legend: { display: false } },
+                            scales: { y: { beginAtZero: true, suggestedMax: 1000 } },
+                            animation: { duration: 800, easing: 'easeOutQuart' }
+                        }
+                    });
+
+                    var myModal = new bootstrap.Modal(document.getElementById('chartModal'));
+                    myModal.show();
+
+                    if(intervalGrafik) clearInterval(intervalGrafik);
+                    intervalGrafik = setInterval(updateGrafikRealtime, 5000);
+                });
+        }
+
+        function updateGrafikRealtime() {
+            if (!chartInstance || !idWebAktif) return;
+            fetch(`/api/chart/${idWebAktif}`)
+                .then(res => res.json())
+                .then(data => {
+                    chartInstance.data.labels = data.map(log => log.waktu_cek.split(' ')[1]);
+                    chartInstance.data.datasets[0].data = data.map(log => log.waktu_respon);
+                    chartInstance.update(); 
+                });
+        }
+
+        document.getElementById('chartModal').addEventListener('hidden.bs.modal', function () {
+            idWebAktif = null;
+            if(intervalGrafik) clearInterval(intervalGrafik);
+        });
+
+        // ==========================================
+        // 3. SCRIPT TABEL PING BAWAH
+        // ==========================================
+        function tarikDataLog() {
+            fetch('/api/logs')
+                .then(response => response.json())
+                .then(data => {
+                    let htmlTable = '';
+                    if(data.length === 0) {
+                        htmlTable = '<tr><td colspan="4" class="text-center text-muted py-5">Belum ada riwayat ping.</td></tr>';
+                    } else {
+                        data.forEach(log => {
+                            let badgeHTML = '';
+                            let diagHTML = '';
+                            let responHTML = '';
+                            
+                            // FITUR BARU: Kalau web lagi di-Pause
+                            if (log.is_active === 0) {
+                                badgeHTML = '<span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary border-opacity-25"><i class="bi bi-pause-circle-fill me-1"></i> PAUSED</span>';
+                                diagHTML = `<div class="mt-1 text-muted" style="font-size: 0.75rem; font-weight: 500;"><i class="bi bi-info-circle"></i> Monitoring dijeda sementara.</div>`;
+                                responHTML = '<span class="text-muted fw-bold">-</span>';
+                            } 
+                            // Kalau web Aktif (ON)
+                            else {
+                                if (log.status_code === 200) {
+                                    badgeHTML = '<span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25"><i class="bi bi-check-circle-fill me-1"></i> 200 OK</span>';
+                                } else {
+                                    badgeHTML = `<span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25"><i class="bi bi-exclamation-triangle-fill me-1"></i> ${log.status_code} ERROR</span>`;
+                                    diagHTML = `<div class="mt-1 text-danger" style="font-size: 0.75rem; font-weight: 500;"><i class="bi bi-robot"></i> Analisa: ${log.diagnosa}</div>`;
+                                }
+                                
+                                let responClass = 'text-success';
+                                if (log.waktu_respon > 1000) responClass = 'text-danger';
+                                else if (log.waktu_respon > 500) responClass = 'text-warning';
+                                
+                                responHTML = `<span class="fw-medium ${responClass}">${log.waktu_respon} ms</span>`;
+                            }
+
+                            htmlTable += `
+                                <tr>
+                                    <td class="ps-4">
+                                        <a href="javascript:void(0)" onclick="bukaChart(${log.id_web}, '${log.nama}')" class="text-decoration-none fw-bold text-primary">
+                                            <i class="bi bi-graph-up me-1"></i> ${log.nama}
+                                        </a>
+                                    </td>
+                                    <td>${badgeHTML} ${diagHTML}</td>
+                                    <td>${responHTML}</td>
+                                    <td class="pe-4 text-muted" style="font-size: 0.85rem;"><i class="bi bi-clock-history me-1"></i> ${log.waktu_cek}</td>
+                                </tr>
+                            `;
+                        });
+                    }
+                    document.getElementById('tabel-log-body').innerHTML = htmlTable;
+                })
+                .catch(error => console.error('Gagal menarik data log:', error));
+        }
+
+        tarikDataLog();
+        setInterval(tarikDataLog, 5000); 
+    </script>
+</body>
+</html>
